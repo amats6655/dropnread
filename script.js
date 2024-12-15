@@ -192,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         const file = await entry.getFile();
                         let content = await file.text();
                         
-                        // Strip comments if enabled and file type is supported
                         if (stripCommentsCheckbox.checked) {
                             const ext = '.' + entry.name.split('.').pop().toLowerCase();
                             if (COMMENT_PATTERNS[ext]) {
@@ -200,7 +199,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                         
-                        const newContent = `// File: ${fullPath}\n${content}\n\n`;
+                        const pattern = document.getElementById('format-pattern').value;
+                        const newContent = pattern
+                            .replace('{path}', path)
+                            .replace('{filename}', entry.name)
+                            .replace('{content}', content)
+                            .replace(/{newline}/g, '\n');
                         
                         if ((result.length + newContent.length) > MAX_CHARS) {
                             result = '';
