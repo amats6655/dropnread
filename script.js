@@ -51,15 +51,33 @@ document.addEventListener('DOMContentLoaded', () => {
     selectDirBtn.className = 'px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200';
     dropZone.appendChild(selectDirBtn);
 
+    const fallbackInput = document.getElementById('fallbackInput');
+
     selectDirBtn.addEventListener('click', async () => {
         try {
-            const dirHandle = await window.showDirectoryPicker();
-            await processDirectoryHandle(dirHandle);
+            if (window.showDirectoryPicker) {
+                const dirHandle = await window.showDirectoryPicker();
+                await processDirectoryHandle(dirHandle);
+            } else {
+                // Safari (fallback)
+                fallbackInput.click();
+            }
         } catch (error) {
             console.error('Error selecting directory:', error);
             dropStatus.textContent = 'Error selecting directory';
         }
     });
+
+    // For fallback
+    fallbackInput.addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (!files.length) {
+            dropStatus.textContent = 'No files selected (fallback).';
+            return;
+        }
+        await processFallbackFiles(files);
+    });
+
 
     // Drag and drop handlers
     dropZone.addEventListener('dragover', (e) => {
@@ -130,6 +148,79 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error('Error processing directory:', error);
             dropStatus.textContent = 'Error processing directory';
+        }
+    }
+
+        async function processFallbackFiles(files) {
+        const excludePatterns = excludePatternsText.value
+            .split('\n')
+            .filter(pattern => pattern.trim())
+            .map(pattern => new RegExp(pattern.trim()
+                .replace(/\./g, '\\.')
+                .replace(/\*/g, '.*')));
+
+        loader.classList.remove('hidden');
+        result = '';
+        resultContainer.classList.add('hidden');
+        warningDiv.classList.add('hidden');
+        processedFilesCount = 0;
+        document.getElementById('files-counter').textContent = '0';
+
+        loader.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start'
+        });
+
+        try {
+            for (const file of files) {
+                let fullPath = file.webkitRelativePath || file.name;
+                currentFile.textContent = fullPath;
+
+                if (excludePatterns.some(pattern => pattern.test(fullPath))) {
+                    continue;
+                }
+
+                processedFilesCount++;
+                document.getElementById('files-counter').textContent = processedFilesCount;
+
+                const ext = '.' + file.name.split('.').pop().toLowerCase();
+                const isText = isTextFile(file.name);
+
+                if (isText) {
+                    let content = await file.text();
+                    if (stripCommentsCheckbox.checked && COMMENT_PATTERNS[ext]) {
+                        content = stripComments(content, ext);
+                    }
+                    
+                    const pattern = document.getElementById('format-pattern').value;
+                    const newContent = pattern
+                        .replace('{path}', fullPath.replace(file.name, ''))
+                        .replace('{filename}', file.name)
+                        .replace('{content}', content)
+                        .replace(/{newline}/g, '\n');
+
+                    if ((result.length + newContent.length) > MAX_CHARS) {
+                        result = '';
+                        showSizeWarning();
+                        return;
+                    }
+                    result += newContent;
+                } else {
+                    if (includeBinaryCheckbox.checked) {
+                        const newContent = `// File: ${fullPath}\n\n`;
+                        if ((result.length + newContent.length) > MAX_CHARS) {
+                            result = '';
+                            showSizeWarning();
+                            return;
+                        }
+                        result += newContent;
+                    }
+                }
+            }
+            displayResult();
+        } catch (error) {
+            console.error('Error processing fallback files:', error);
+            dropStatus.textContent = 'Error processing fallback files';
         }
     }
 
